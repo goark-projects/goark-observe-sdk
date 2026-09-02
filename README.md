@@ -12,6 +12,7 @@
 - Bounded metric cardinality per instrument.
 - Structured log and event pipelines with trace correlation.
 - Idempotent flush and shutdown across processors and exporters.
+- Optional bounded `processor.BatchSpanProcessor` for non-blocking request paths.
 - Zero-allocation steady-state counter recording for existing string-label series in the included benchmark.
 
 ## Install
@@ -37,6 +38,17 @@ defer span.End()
 ```
 
 Exporters and processors remain separate extensions. Pass only bounded, non-blocking implementations on synchronous hot paths, or use an explicitly bounded asynchronous processor.
+
+```go
+batch, err := processor.NewBatchSpanProcessor(
+    spanExporter,
+    processor.WithQueueSize(2048),
+    processor.WithBatchSize(512),
+)
+provider, err := observesdk.NewProvider(observesdk.WithProcessors(batch))
+```
+
+The batch processor owns the exporter lifecycle. Do not also pass the same span exporter through `WithExporters`, because that intentionally enables an additional synchronous export path. Exporter implementations own protocol retry policy; the processor bounds in-memory buffering and reports queue overflow through its error handler.
 
 ## Validation
 

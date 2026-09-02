@@ -18,6 +18,9 @@ func (p *Provider) ForceFlush(ctx context.Context) error {
 	}
 	p.lifecycleMu.Lock()
 	defer p.lifecycleMu.Unlock()
+	if p.state.Load() == providerClosed {
+		return nil
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}

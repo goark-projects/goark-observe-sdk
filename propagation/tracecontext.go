@@ -2,12 +2,14 @@ package propagation
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
 	"goark.dev/observe"
 )
 
 const traceParentHeader = "traceparent"
+const traceStateHeader = "tracestate"
 
 // TraceContext 返回 W3C Trace Context 传播器。
 func TraceContext() observe.Propagator {
@@ -29,6 +31,9 @@ func (traceContext) Inject(ctx context.Context, carrier observe.TextMapCarrier) 
 		flags = "01"
 	}
 	carrier.Set(traceParentHeader, "00-"+spanContext.TraceID.String()+"-"+spanContext.SpanID.String()+"-"+flags)
+	if validTraceState(spanContext.TraceState) {
+		carrier.Set(traceStateHeader, spanContext.TraceState)
+	}
 }
 
 func (traceContext) Extract(ctx context.Context, carrier observe.TextMapCarrier) context.Context {
@@ -50,15 +55,25 @@ func (traceContext) Extract(ctx context.Context, carrier observe.TextMapCarrier)
 	if err != nil {
 		return ctx
 	}
-	var flags observe.TraceFlags
-	if parts[3] == "01" {
-		flags = observe.TraceFlagsSampled
-	} else if parts[3] != "00" {
+	parsedFlags, err := strconv.ParseUint(parts[3], 16, 8)
+	if err != nil {
 		return ctx
 	}
-	return observe.ContextWithSpanContext(ctx, observe.NewSpanContext(traceID, spanID, flags, "", true))
+	var flags observe.TraceFlags
+	if parsedFlags&1 != 0 {
+		flags = observe.TraceFlagsSampled
+	}
+	traceState := carrier.Get(traceStateHeader)
+	if !validTraceState(traceState) {
+		traceState = ""
+	}
+	return observe.ContextWithSpanContext(ctx, observe.NewSpanContext(traceID, spanID, flags, traceState, true))
 }
 
 func (traceContext) Fields() []string {
-	return []string{traceParentHeader}
+	return []string{traceParentHeader, traceStateHeader}
+}
+
+func validTraceState(value string) bool {
+	return len(value) <= 512 && !strings.ContainsAny(value, "\r\n")
 }

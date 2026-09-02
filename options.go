@@ -113,7 +113,7 @@ func WithMetricCardinalityLimit(limit int) Option {
 func defaultConfig() config {
 	return config{
 		resource:               observe.NewResource("unknown_service"),
-		sampler:                observe.AlwaysOnSampler(),
+		sampler:                ParentBased(observe.AlwaysOnSampler()),
 		propagator:             propagation.TraceContext(),
 		errorHandler:           observe.ErrorHandlerFunc(func(_ context.Context, _ error) {}),
 		metricCardinalityLimit: defaultMetricCardinalityLimit,
