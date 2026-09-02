@@ -4,12 +4,13 @@ import (
 	"goark.dev/observe"
 )
 
-func (i *instrument) snapshot() (observe.MetricData, bool) {
+func (i *instrument) snapshot() (observe.MetricData, bool, uint64) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
-	if i.seriesCount == 0 {
-		return observe.MetricData{}, false
+	if i.seriesCount == 0 || i.generation == i.flushed {
+		return observe.MetricData{}, false, 0
 	}
+	generation := i.generation
 	data := observe.MetricData{Resource: i.meter.resource.Clone(), Scope: i.meter.scope.Clone(), Name: i.descriptor.Name, Description: i.descriptor.Description, Unit: i.descriptor.Unit, Kind: i.descriptor.Kind}
 	switch i.descriptor.Kind {
 	case observe.InstrumentGauge:
@@ -19,7 +20,15 @@ func (i *instrument) snapshot() (observe.MetricData, bool) {
 	default:
 		data.Aggregation = i.sumSnapshot()
 	}
-	return data, true
+	return data, true, generation
+}
+
+func (i *instrument) commit(generation uint64) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if generation > i.flushed {
+		i.flushed = generation
+	}
 }
 func (i *instrument) gaugeSnapshot() observe.GaugeData {
 	points := make([]observe.NumberPoint, 0, i.seriesCount)

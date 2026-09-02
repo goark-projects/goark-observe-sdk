@@ -2,6 +2,7 @@ package observesdk_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"goark.dev/observe"
@@ -39,6 +40,39 @@ func TestMetricCardinalityIsBounded(t *testing.T) {
 	}
 }
 
+func TestFailedMetricExportRemainsPending(t *testing.T) {
+	t.Parallel()
+	exporter := &retryMetricExporter{captureExporter: captureExporter{}, fail: true}
+	provider, _ := observesdk.NewProvider(observesdk.WithExporters(exporter))
+	counter, _ := provider.Meter("test").Int64Counter("requests")
+	counter.Add(t.Context(), 1)
+	if err := provider.ForceFlush(t.Context()); err == nil {
+		t.Fatal("first ForceFlush must fail")
+	}
+	exporter.fail = false
+	if err := provider.ForceFlush(t.Context()); err != nil {
+		t.Fatalf("retry ForceFlush: %v", err)
+	}
+	exporter.mu.Lock()
+	defer exporter.mu.Unlock()
+	if len(exporter.metrics) != 2 {
+		t.Fatalf("export attempts = %d, want 2", len(exporter.metrics))
+	}
+}
+
+type retryMetricExporter struct {
+	captureExporter
+	fail bool
+}
+
+func (e *retryMetricExporter) ExportMetrics(ctx context.Context, values []observe.MetricData) error {
+	_ = e.captureExporter.ExportMetrics(ctx, values)
+	if e.fail {
+		return errors.New("export failed")
+	}
+	return nil
+}
+
 func TestObservableGaugeIsCollected(t *testing.T) {
 	t.Parallel()
 	exporter := &captureExporter{}
@@ -61,6 +95,25 @@ func TestObservableGaugeIsCollected(t *testing.T) {
 	defer registration.Unregister()
 	if err := provider.ForceFlush(t.Context()); err != nil {
 		t.Fatalf("ForceFlush: %v", err)
+	}
+	exporter.mu.Lock()
+	defer exporter.mu.Unlock()
+	if len(exporter.metrics) != 1 {
+		t.Fatalf("metrics = %d, want 1", len(exporter.metrics))
+	}
+}
+
+func TestUnchangedSynchronousMetricsAreNotExportedTwice(t *testing.T) {
+	t.Parallel()
+	exporter := &captureExporter{}
+	provider, _ := observesdk.NewProvider(observesdk.WithExporters(exporter))
+	counter, _ := provider.Meter("test").Int64Counter("requests")
+	counter.Add(t.Context(), 1)
+	if err := provider.ForceFlush(t.Context()); err != nil {
+		t.Fatalf("first ForceFlush: %v", err)
+	}
+	if err := provider.ForceFlush(t.Context()); err != nil {
+		t.Fatalf("second ForceFlush: %v", err)
 	}
 	exporter.mu.Lock()
 	defer exporter.mu.Unlock()

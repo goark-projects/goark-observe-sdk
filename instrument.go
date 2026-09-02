@@ -30,6 +30,8 @@ type instrument struct {
 	mu          sync.Mutex
 	series      map[uint64][]*series
 	seriesCount int
+	generation  uint64
+	flushed     uint64
 }
 
 func newInstrument(meter *meter, descriptor observe.MetricDescriptor, numberKind observe.NumberKind) *instrument {
@@ -62,6 +64,7 @@ func (i *instrument) recordInt(ctx context.Context, value int64, attrs []observe
 		point.intValue += value
 		point.updated = now
 	}
+	i.generation++
 }
 func (i *instrument) recordFloat(ctx context.Context, value float64, attrs []observe.Attr, monotonic bool) {
 	if i == nil || i.meter.provider.state.Load() != providerActive || math.IsNaN(value) || math.IsInf(value, 0) || (monotonic && value < 0) {
@@ -88,6 +91,7 @@ func (i *instrument) recordFloat(ctx context.Context, value float64, attrs []obs
 		point.floatValue += value
 		point.updated = now
 	}
+	i.generation++
 }
 func (i *instrument) getSeries(key uint64, attrs []observe.Attr, now time.Time) *series {
 	for _, point := range i.series[key] {

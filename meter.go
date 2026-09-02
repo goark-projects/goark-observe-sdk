@@ -157,7 +157,7 @@ func metricKey(name string, kind observe.InstrumentKind, numberKind observe.Numb
 	return fmt.Sprintf("%s\x00%d\x00%d", name, kind, numberKind)
 }
 
-func (m *meter) snapshot(ctx context.Context) []observe.MetricData {
+func (m *meter) snapshot(ctx context.Context) ([]observe.MetricData, []metricCommit) {
 	m.mu.Lock()
 	instruments := make([]metricInstrument, 0, len(m.instruments))
 	for _, value := range m.instruments {
@@ -169,19 +169,27 @@ func (m *meter) snapshot(ctx context.Context) []observe.MetricData {
 	}
 	m.mu.Unlock()
 	metrics := make([]observe.MetricData, 0, len(instruments))
+	commits := make([]metricCommit, 0, len(instruments))
 	for _, instrument := range instruments {
-		if data, ok := instrument.snapshot(); ok {
+		if data, ok, generation := instrument.snapshot(); ok {
 			metrics = append(metrics, data)
+			commits = append(commits, metricCommit{instrument: instrument, generation: generation})
 		}
 	}
 	for _, registration := range callbacks {
 		metrics = append(metrics, registration.collect(ctx, m.resource, m.scope, m.provider.errors)...)
 	}
-	return metrics
+	return metrics, commits
 }
 
 type metricInstrument interface {
-	snapshot() (observe.MetricData, bool)
+	snapshot() (observe.MetricData, bool, uint64)
+	commit(uint64)
+}
+
+type metricCommit struct {
+	instrument metricInstrument
+	generation uint64
 }
 
 func (p *Provider) flushMetrics(ctx context.Context) error {
@@ -192,8 +200,11 @@ func (p *Provider) flushMetrics(ctx context.Context) error {
 	meters := append([]*meter(nil), p.metricScopes...)
 	p.metricMu.Unlock()
 	var metrics []observe.MetricData
+	var commits []metricCommit
 	for _, meter := range meters {
-		metrics = append(metrics, meter.snapshot(ctx)...)
+		data, pending := meter.snapshot(ctx)
+		metrics = append(metrics, data...)
+		commits = append(commits, pending...)
 	}
 	if len(metrics) == 0 {
 		return nil
@@ -207,6 +218,11 @@ func (p *Provider) flushMetrics(ctx context.Context) error {
 	for _, exporter := range p.metricExporters {
 		if err := exporter.ExportMetrics(ctx, metrics); err != nil {
 			joined = errors.Join(joined, err)
+		}
+	}
+	if joined == nil {
+		for _, commit := range commits {
+			commit.instrument.commit(commit.generation)
 		}
 	}
 	return joined
