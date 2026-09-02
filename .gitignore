@@ -1,0 +1,48 @@
+# Go 构建产物
+/bin/
+/build/
+/dist/
+/out/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go 覆盖率与性能分析文件
+coverage.out
+coverage.html
+*.coverprofile
+cpu.prof
+mem.prof
+trace.out
+
+# 本地 Go 工作区文件
+go.work
+go.work.sum
+
+# 本地环境与密钥文件
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# IDE 与编辑器本地状态
+.idea/
+.vscode/
+.fleet/
+*.swp
+*.swo
+
+# 操作系统与日志文件
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
+
+# 临时目录
+/tmp/
+/.cache/

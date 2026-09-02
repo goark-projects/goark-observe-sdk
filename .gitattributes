@@ -1,0 +1,19 @@
+# 文本文件统一使用 LF，避免跨平台提交产生无意义差异。
+* text=auto eol=lf
+
+*.go text eol=lf
+*.mod text eol=lf
+*.sum text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.toml text eol=lf
+
+# 图片资源按二进制处理。
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
